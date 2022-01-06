@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>DasherServer Frontend</title>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+		
+		<style>
+			body {
+				display: flex;
+				flex-direction: column;
+				width: 100vw;
+				height: 100vh;
+				box-sizing: border-box;
+				overflow: hidden;
+				margin: 0;
+				padding: 10px;
+			}
+			
+			#menu {
+				border: 1px solid black;
+			}
+			
+			#canvas-wrapper {
+				border: 1px solid red;
+				flex-grow: 1;
+				overflow: hidden;
+			}
+			
+			#cavas {
+				width: 100%;
+				height: 100%;
+			}
+
+		</style>
+		
+		<script>
+			$(document).ready(function() {
+				$(window).resize(function(){
+					const canvas = document.getElementById('canvas');
+					canvas.width = $("#canvas-wrapper").width();
+					canvas.height = $("#canvas-wrapper").height();
+					
+					SendScreenSize(canvas.width, canvas.height);
+				});
+				
+				$("#canvas").mousemove(function(event){
+					if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
+						var offset = $(this).offset();
+						var relX = event.pageX - offset.left;
+						var relY = event.pageY - offset.top;
+						
+						webSocket.send(JSON.stringify({
+							T : "C",
+							X : relX,
+							Y : relY
+						}));
+					}
+				});
+				
+				$("#canvas").mousedown(function(e){
+					if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
+						webSocket.send(JSON.stringify({
+							T : "M",
+							D : true
+						}));
+					}
+				});
+				
+				$("#canvas").mouseup(function(e){
+					if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
+						webSocket.send(JSON.stringify({
+							T : "M",
+							D : false
+						}));
+					}
+				});
+				
+			});
+			
+			function SendScreenSize(Width, Height){
+				// Send resize event
+				if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
+					webSocket.send(JSON.stringify({
+						T : "R",
+						W : canvas.width,
+						H : canvas.height
+					}));
+				}
+			}
+			
+			function DisConnect(){
+				if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
+					webSocket.close();
+				}else{
+					webSocket = new WebSocket("ws://" + $("#ipAddr").val() + ":" + $("#portAddr").val());
+				
+					webSocket.onopen = function (event) {
+						$("#status").text("Connected");
+						$("#connectButton").val("Disconnect");
+						SendScreenSize(canvas.width, canvas.height);
+					};
+					
+					webSocket.onerror = function (error) {
+						console.log('WebSocket Error ' + error);
+					};
+					
+					webSocket.onclose = function (event) {
+						$("#connectButton").val("Connect");
+					};
+					
+					webSocket.onmessage = OnMessage;
+				}
+				
+			}
+			
+			function OnColorMap(Data){
+				colorMap = Data;
+			}
+			
+			function Draw(Data){
+				const canvas = document.getElementById('canvas');
+				var ctx = canvas.getContext("2d");
+				
+				//draw rectangles
+				for(const Rect of Data.R){
+					const color = colorMap.C[Rect.C];
+					ctx.fillStyle = "rgb(" + color[0] + "," + color[1] + "," + color[2] + ")";
+					if(Rect.O != -1 && Rect.T > 0){
+						const outline = colorMap.C[Rect.O];
+						ctx.lineWidth = Rect.T;
+						ctx.strokeStyle = "rgb(" + outline[0] + "," + outline[1] + "," + outline[2] + ")";
+					}else{
+						ctx.lineWidth = 0;
+					}
+					ctx.fillRect(Rect.X1, Rect.Y1, Rect.X2 - Rect.X1, Rect.Y2 - Rect.Y1);					
+				}
+				
+				//draw lines
+				for(const Line of Data.L){
+					const color = colorMap.C[Line.C];
+					
+					ctx.lineWidth = Line.W;
+					ctx.strokeStyle = "rgb(" + color[0] + "," + color[1] + "," + color[2] + ")";
+					
+					ctx.beginPath();
+					ctx.moveTo(Line.P[0][0], Line.P[0][1]);
+					ctx.lineTo(Line.P[1][0], Line.P[1][1]);
+					ctx.stroke();
+				}
+				
+				//draw text
+				for(const Text of Data.S){
+					const color = colorMap.C[Text.C];
+					
+					ctx.fillStyle = "rgb(" + color[0] + "," + color[1] + "," + color[2] + ")";
+					ctx.font = Text.F + "px serif";
+					ctx.fillText(Text.L.S, Text.X, Text.Y);
+				}
+			}
+			
+			function OnMessage(Msg){
+				const data = JSON.parse(Msg.data);
+				switch(data.T){
+					case "F":
+						Draw(data)
+						break;
+					case "C":
+						OnColorMap(data);
+						break;
+				}
+			}
+		</script>
+	</head>
+	<body>
+		<div id="menu">
+			<input type="text" id="ipAddr" value="127.0.0.1" placeholder="127.0.0.1" size="16">:
+			<input type="text" id="portAddr" value="9002" placeholder="port" size="4">
+			<input type="button" id="connectButton" onclick="DisConnect()" value="Connect">
+			<span id="status"></span>
+		</div>
+		<div id="canvas-wrapper">
+			<canvas id="canvas" width="200" height="100"></canvas>
+		</div>
+	</body>
+</html>
