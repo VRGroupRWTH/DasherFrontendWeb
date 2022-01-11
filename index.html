@@ -18,20 +18,46 @@
 			}
 			
 			#menu {
-				border: 1px solid black;
+				display: flex;
+				flex-direction: row;
+				margin-bottom: 5px;
 			}
 			
 			#canvas-wrapper {
-				border: 1px solid red;
+				border: 1px solid black;
 				flex-grow: 1;
 				overflow: hidden;
+				border-radius: 3px;
 			}
 			
 			#cavas {
 				width: 100%;
 				height: 100%;
 			}
+			
+			#status {
+				min-width: 120px;
+				display: inline-block;
+				background: lightgray;
+				border-radius: 3px;
+				text-align: center;
+			}
+			
+			#outputBuffer {
+				flex-grow: 1;
+			}
+			
+			#outputBuffer {
+				flex-grow: 1;
+			}
 
+			#menu *:first-child {
+				margin-left: 0px !important;
+			}
+			
+			#menu * {
+				margin-left: 5px;
+			}
 		</style>
 		
 		<script>
@@ -43,6 +69,7 @@
 					
 					SendScreenSize(canvas.width, canvas.height);
 				});
+				window.dispatchEvent(new Event('resize')); //Trigger resize once
 				
 				$("#canvas").mousemove(function(event){
 					if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
@@ -83,8 +110,8 @@
 				if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
 					webSocket.send(JSON.stringify({
 						T : "R",
-						W : canvas.width,
-						H : canvas.height
+						W : Width,
+						H : Height
 					}));
 				}
 			}
@@ -98,10 +125,11 @@
 					webSocket.onopen = function (event) {
 						$("#status").text("Connected");
 						$("#connectButton").val("Disconnect");
-						SendScreenSize(canvas.width, canvas.height);
+						SendScreenSize($("#canvas-wrapper").width(), $("#canvas-wrapper").height());
 					};
 					
 					webSocket.onerror = function (error) {
+						$("#status").text("Connection Error");
 						console.log('WebSocket Error ' + error);
 					};
 					
@@ -153,10 +181,68 @@
 				for(const Text of Data.S){
 					const color = colorMap.C[Text.C];
 					
+					ctx.textBaseline = "middle"; 
 					ctx.fillStyle = "rgb(" + color[0] + "," + color[1] + "," + color[2] + ")";
 					ctx.font = Text.F + "px serif";
 					ctx.fillText(Text.L.S, Text.X, Text.Y);
 				}
+			}
+			
+			function OnBuffer(Data){
+				$("#outputBuffer").val(Data.B);
+			}
+			
+			/* Copied from https://stackoverflow.com/a/33928558 */
+			function Copy(){
+				var text = document.getElementById('outputBuffer').value;
+				if (window.clipboardData && window.clipboardData.setData) {
+					// Internet Explorer-specific code path to prevent textarea being shown while dialog is visible.
+					return window.clipboardData.setData("Text", text);
+
+				}
+				else if (document.queryCommandSupported && document.queryCommandSupported("copy")) {
+					var textarea = document.createElement("textarea");
+					textarea.textContent = text;
+					textarea.style.position = "fixed";  // Prevent scrolling to bottom of page in Microsoft Edge.
+					document.body.appendChild(textarea);
+					textarea.select();
+					try {
+						return document.execCommand("copy");  // Security exception may be thrown by some browsers.
+					}
+					catch (ex) {
+						console.warn("Copy to clipboard failed.", ex);
+						return prompt("Copy to clipboard: Ctrl+C, Enter", text);
+					}
+					finally {
+						document.body.removeChild(textarea);
+					}
+				}
+			}
+			
+			function OnRequestAlphabetSizes(Data){
+				const canvas = document.getElementById('canvas');
+				var ctx = canvas.getContext("2d");
+				
+				var KnownChars = "";
+				var Result = {T : "S", C : [], H : []};
+							
+				for(const Char of Data.C){
+					var CharSize = {D : Char, W : []};
+					KnownChars += Char;
+					for(var i = 0; i < Data.S.length; i++){
+						ctx.font = Data.S[i] + "px serif";
+						CharSize.W[i] = ctx.measureText(Char).width;
+					}
+					Result.C.push(CharSize);
+				}
+				
+				for(var i = 0; i < Data.S.length; i++){
+					ctx.font = Data.S[i] + "px serif";
+					var TextMetrics = ctx.measureText(KnownChars);
+					Result.H[i] = TextMetrics.actualBoundingBoxAscent + TextMetrics.actualBoundingBoxDescent;
+				}
+				
+				webSocket.send(JSON.stringify(Result));
 			}
 			
 			function OnMessage(Msg){
@@ -168,16 +254,25 @@
 					case "C":
 						OnColorMap(data);
 						break;
+					case "B":
+						OnBuffer(data);
+						break;
+					case "A":
+						OnRequestAlphabetSizes(data);
+						break;
 				}
 			}
 		</script>
 	</head>
 	<body>
 		<div id="menu">
-			<input type="text" id="ipAddr" value="127.0.0.1" placeholder="127.0.0.1" size="16">:
+			<input type="text" id="ipAddr" value="127.0.0.1" placeholder="127.0.0.1" size="16">
+			<span>:</span>
 			<input type="text" id="portAddr" value="9002" placeholder="port" size="4">
 			<input type="button" id="connectButton" onclick="DisConnect()" value="Connect">
 			<span id="status"></span>
+			<input type="text" id="outputBuffer" value="" placeholder="Output">
+			<input type="button" id="copyButton" onclick="Copy()" value="Copy">
 		</div>
 		<div id="canvas-wrapper">
 			<canvas id="canvas" width="200" height="100"></canvas>
