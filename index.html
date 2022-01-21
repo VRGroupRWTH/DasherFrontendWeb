@@ -116,6 +116,17 @@
 				}
 			}
 			
+			function SendParameter(ParameterName, ParameterValue){
+				// Send resize event
+				if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
+					webSocket.send(JSON.stringify({
+						T : "P",
+						N : ParameterName,
+						V : ParameterValue
+					}));
+				}
+			}
+			
 			function DisConnect(){
 				if(typeof webSocket != "undefined" && (webSocket.readyState == 1 || webSocket.readyState == 0)){
 					webSocket.close();
@@ -126,6 +137,11 @@
 						$("#status").text("Connected");
 						$("#connectButton").val("Disconnect");
 						SendScreenSize($("#canvas-wrapper").width(), $("#canvas-wrapper").height());
+
+						SendParameter("BP_AUTO_SPEEDCONTROL", false);  		//Auto Speed Control
+						SendParameter("LP_DASHER_FONTSIZE", 18);
+						SendParameter("LP_MAX_BITRATE", 400);				//Maximum Speed
+						SendParameter("SP_INPUT_FILTER", "Stylus Control");	//On Hold
 					};
 					
 					webSocket.onerror = function (error) {
